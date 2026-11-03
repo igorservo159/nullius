@@ -176,7 +176,7 @@ export function AccountsScreen({
           <View style={styles.titleRow}>
             <Text style={styles.title}>Accounts</Text>
             <Text style={styles.count}>
-              {accounts.length} de {maxAccounts}
+              {accounts.length} of {maxAccounts}
             </Text>
           </View>
 
