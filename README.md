@@ -5,6 +5,11 @@ is confirmed to the receiver in seconds, with no intermediary holding the funds,
 payment or able to reverse it. The app runs entirely on the phone and pays on
 [Linea](https://linea.build), a rollup that settles on Ethereum.
 
+Nullius is also meant to be taken apart and rebuilt: the payment logic lives in a TypeScript core
+with no screen, the network and the contract it pays through are data rather than assumptions, and
+anyone can build and sign their own APK with other networks, another contract or any change they
+want.
+
 > **Status: early.** Nullius works end to end on Linea mainnet, but neither the app nor the
 > contract has been audited. Use small amounts and keep a copy of every key you import.
 
@@ -17,9 +22,10 @@ payment or able to reverse it. The app runs entirely on the phone and pays on
 5. [Deployments](#deployments)
 6. [Install the app](#install-the-app)
 7. [Use the app](#use-the-app)
-8. [Develop](#develop)
-9. [Repository layout](#repository-layout)
-10. [License](#license)
+8. [Make it yours](#make-it-yours)
+9. [Develop](#develop)
+10. [Repository layout](#repository-layout)
+11. [License](#license)
 
 ## The idea
 
@@ -41,6 +47,12 @@ Nullius answers both without anyone in the middle:
 - **Linea makes it fast and Ethereum makes it final.** Linea includes a transaction in a block
   within seconds, so the receiver sees the charge paid almost at once; Linea then proves its
   blocks on Ethereum, so the payment ends up as hard to reverse as Ethereum itself.
+
+The name comes from *terra nullius*, the term international law uses for land that belongs to no
+one and that no sovereign rules. That is the ground Nullius wants payments to stand on: the
+contract has no owner and no upgrade path, the app has no server and no operator, and the rules a
+payment follows are code that anyone can read and nobody can change for a single user. No party
+sits between the payer and the receiver, because there is no party to sit there.
 
 ## Features
 
@@ -98,8 +110,26 @@ The app knows both addresses; nothing needs configuring.
 
 ## Install the app
 
-There is no store release yet, so you build the APK yourself and install it on the phone. Once
-the tools are installed, it takes a few commands and about two minutes of build.
+### Download
+
+Each [release](https://github.com/igorservo159/nullius/releases/latest) carries a signed APK.
+Download it on the phone and open it; Android asks you to allow installs from that source.
+
+Every release is signed with the same key, so a new release installs over the previous one and
+keeps your accounts and records. You can check that an APK carries that key with `apksigner`
+(from the Android SDK's build tools):
+
+```sh
+apksigner verify --print-certs nullius-*.apk
+# Signer #1 certificate SHA-256 digest:
+# 95371d102ce23910edcae0498ff5fb3c89e942ab64c11d01069021db401953bd
+```
+
+### Build your own
+
+Building the APK yourself is the way to run a version you changed (see
+[Make it yours](#make-it-yours)) or to run exactly the code you read. Once the tools are
+installed, it takes a few commands and about two minutes of build.
 
 **You need:** a current Node.js LTS, JDK 17, and the Android SDK (the one
 [Android Studio](https://developer.android.com/studio) installs, with `ANDROID_HOME` set).
@@ -117,7 +147,8 @@ cd android
 
 The APK is at `mobile/android/app/build/outputs/apk/release/app-release.apk`. The
 `reactNativeArchitectures` flag builds only for 64-bit ARM, which every recent phone uses, and
-makes the build faster and the APK smaller (about 40 MB); leave it out to build for every architecture.
+makes the build faster and the APK smaller (about 40 MB); leave it out to build for every
+architecture.
 
 To install it, either copy the file to the phone and open it (Android asks you to allow installs
 from that source), or connect the phone with USB debugging on and run:
@@ -127,8 +158,10 @@ adb install app/build/outputs/apk/release/app-release.apk
 ```
 
 This APK is signed with the debug key of the React Native template, which is public: fine for a
-phone where only you install apps, never for distributing the APK. A build signed with another key cannot be installed over it without
-uninstalling first, which deletes the app's keys and records.
+phone where only you install apps, never for distributing the APK (see
+[Sign a release](#sign-a-release)). Android installs an APK over another only when both carry the
+same key, so moving between a downloaded release and your own build means uninstalling first,
+which deletes the app's keys and records.
 
 ## Use the app
 
@@ -145,6 +178,22 @@ uninstalling first, which deletes the app's keys and records.
 
 To try the app without real money, open *Network*, choose *Use the test network* and fund the
 account with Linea Sepolia ETH from a faucet.
+
+## Make it yours
+
+The core makes no choice the code cannot show, and each one sits in a single place:
+
+| To change | Where | What follows from it |
+|---|---|---|
+| The networks | `core/src/network/network.ts`: `knownChains`, `chainById`, `l1ChainOf`, `defaultNetwork` | `chainById` refuses any chain it does not list, so a new network is accepted only once it is named there, with the L1 it settles on. |
+| Where `Payments` lives | `core/src/contracts/payments.ts`: `paymentsDeployments` | One entry per chain id, with the address and the block that published it; the app reads history from that block on. |
+| The contract itself | `contracts/src/Payments.sol`, then `paymentsAbi` and `paymentsCodeHash` in `core/src/contracts/payments.ts` | Before trusting an address, the app hashes the code deployed there and compares it with `paymentsCodeHash`: a changed contract is refused until its hash is written here. A new order id formula also changes the test vector pinned on both sides. |
+| The bridge | `core/src/contracts/lineaMessageService.ts`: `messageServicesOf` | The bridge speaks Linea's canonical message service; another rollup needs its own messaging and proof. |
+| Name, app id and icon | `mobile/app.json`, `mobile/assets/` | A different `android.package` makes a separate app, installable next to Nullius. |
+| Screens | `mobile/src/<feature>/` | Screens call the core's use cases and never touch storage directly. |
+
+The core's tests run against an in-memory database and a local `anvil` with the real contract, so
+a change can be checked before it reaches a phone (see [Develop](#develop)).
 
 ## Develop
 
@@ -191,6 +240,28 @@ forge script script/Deploy.s.sol --rpc-url linea_sepolia --broadcast
 
 A new deployment needs its address and block added to `paymentsDeployments` in
 `core/src/contracts/payments.ts`.
+
+### Sign a release
+
+An APK you hand to other people must carry a key that only you hold. Create one once, outside the
+repository, and keep a copy of it and of its password: losing either means no later version can
+install over the ones already on people's phones.
+
+```sh
+keytool -genkeypair -storetype PKCS12 -keystore ~/.android-keys/nullius-release.jks \
+  -alias nullius -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Nullius"
+```
+
+Then sign each build with it. `apksigner` replaces the debug signature the build carries:
+
+```sh
+apksigner sign --ks ~/.android-keys/nullius-release.jks --out nullius-1.0.0.apk \
+  mobile/android/app/build/outputs/apk/release/app-release.apk
+apksigner verify --print-certs nullius-1.0.0.apk
+```
+
+Raise `android.versionCode` in `mobile/app.json` for every release: Android refuses to replace an
+app with one whose code is not higher.
 
 ## Repository layout
 
