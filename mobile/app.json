@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.anonymous.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Nullius uses the camera to read a charge's QR code.",
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Geist",
+                "fontDefinitions": [
+                  { "path": "./assets/fonts/Geist_400Regular.ttf", "weight": 400 },
+                  { "path": "./assets/fonts/Geist_500Medium.ttf", "weight": 500 },
+                  { "path": "./assets/fonts/Geist_600SemiBold.ttf", "weight": 600 }
+                ]
+              },
+              {
+                "fontFamily": "Geist Mono",
+                "fontDefinitions": [
+                  { "path": "./assets/fonts/GeistMono_400Regular.ttf", "weight": 400 },
+                  { "path": "./assets/fonts/GeistMono_500Medium.ttf", "weight": 500 }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    ]
+  }
+}

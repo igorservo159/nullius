@@ -1,0 +1,28 @@
+{
+  "name": "@nullius/core",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./accounts": "./src/accounts/index.ts",
+    "./balances": "./src/balances/index.ts",
+    "./bridge": "./src/bridge/index.ts",
+    "./charges": "./src/charges/index.ts",
+    "./database": "./src/database/index.ts",
+    "./history": "./src/history/index.ts",
+    "./network": "./src/network/index.ts",
+    "./payments": "./src/payments/index.ts",
+    "./transactions": "./src/transactions/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "viem": "^2.57.4"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

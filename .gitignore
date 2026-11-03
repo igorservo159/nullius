@@ -1,0 +1,13 @@
+node_modules/
+target/
+
+# Kept on the developer's machine and never published: test keys, and the notes and assistant
+# files of the work on the project.
+wallet.env
+accounts.json
+outdated/
+build/
+notes/
+CLAUDE.md
+AGENTS.md
+.claude/
