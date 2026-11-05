@@ -1,4 +1,5 @@
-// Paying a charge: ask the Payments contract whether it would accept, sign, send, and wait.
+// Paying a charge: ask the Payments contract whether it would accept, sign, send, and wait; and
+// asking it whether an order id is paid in the state of a given block.
 
 import {
   BaseError,
@@ -194,6 +195,25 @@ export async function outcomeOf(
     revertReason:
       receipt.status === 'reverted' ? await revertReasonOf(reader, receipt.transactionHash) : null,
   };
+}
+
+/**
+ * Whether Payments holds `orderId` as paid in the state of block `blockNumber`. A node that no
+ * longer keeps that block's state throws.
+ */
+export async function isPaidAtBlock(
+  reader: PublicClient,
+  network: Network,
+  orderId: Hex,
+  blockNumber: bigint,
+): Promise<boolean> {
+  return reader.readContract({
+    address: network.paymentsAddress,
+    abi: paymentsAbi,
+    functionName: 'paid',
+    args: [orderId],
+    blockNumber,
+  });
 }
 
 /**

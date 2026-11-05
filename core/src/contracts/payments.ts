@@ -7,6 +7,7 @@ import { parseAbi, type Address } from 'viem';
 
 export const paymentsAbi = parseAbi([
   'function pay(bytes32 orderId, bytes32 salt, address payee) payable',
+  'function paid(bytes32) view returns (bool)',
   'event Payment(bytes32 indexed orderId, address indexed payer, address indexed payee, uint256 amount)',
   'error ZeroPayee()',
   'error ZeroAmount()',

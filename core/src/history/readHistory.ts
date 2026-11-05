@@ -32,6 +32,8 @@ async function payCallOf(reader: PublicClient, network: Network, hash: Hex) {
     return null;
   }
   const call = decodeFunctionData({ abi: paymentsAbi, data: transaction.input });
+  // Only `pay` emits `Payment`; the check tells TypeScript the arguments are `pay`'s.
+  if (call.functionName !== 'pay') return null;
   const [orderId, salt, payee] = call.args;
   return { transaction, orderId, salt, payee };
 }

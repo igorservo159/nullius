@@ -7,6 +7,7 @@ import { paymentsAbi, paymentsCodeHash } from './payments';
 // `cast sig-event`.
 const pinnedSelectors: Record<string, string> = {
   pay: '0xe7e30937',
+  paid: '0xadd89bb2',
   ZeroPayee: '0xe1ee996d',
   ZeroAmount: '0x1f2a2005',
   OrderIdMismatch: '0x0517adf9',
@@ -50,8 +51,10 @@ function shapeOf(entry: AbiEntry) {
   return {
     type: entry.type,
     name: entry.name,
+    // An unnamed argument, such as the key of a public mapping's getter, is `''` in what
+    // `forge build` writes and left out by `parseAbi`.
     inputs: (entry.inputs ?? []).map(({ name, type, indexed }) => ({
-      name,
+      name: name ?? '',
       type,
       indexed: indexed ?? false,
     })),

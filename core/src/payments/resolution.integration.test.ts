@@ -153,6 +153,30 @@ describe.skipIf(anvil === null)('resolveSentPayments on anvil', () => {
     expect(await finalizedOf(transaction.hash)).toBe(1);
   });
 
+  // Rows of hashes no node holds, settled by hand at the current block: `aa` executed with an
+  // order id nobody paid, `bb` reverted. Once the finalized block passes them, Payments says `aa`
+  // is not paid, and `bb` needs no question.
+  test('an executed row is finalized only if its order id is paid, a reverted one by its block', async () => {
+    const block = await readerFor(network).getBlockNumber();
+    const settled = (status: 'success' | 'reverted') => ({
+      status,
+      blockNumber: block,
+      gasUsed: 50_000n,
+      effectiveGasPrice: 7n,
+      revertReason: status === 'reverted' ? ('AlreadyPaid' as const) : null,
+    });
+    await saveSignedPayment(db, { hash: unknownHash('aa'), nonce: 0 }, newPayment('11'), network, 1);
+    await saveSignedPayment(db, { hash: unknownHash('bb'), nonce: 0 }, newPayment('22'), network, 1);
+    await settleSentPayment(db, unknownHash('aa'), settled('success'));
+    await settleSentPayment(db, unknownHash('bb'), settled('reverted'));
+
+    await chain.mine({ blocks: 64 });
+    await markFinalized(db, network, payer);
+
+    expect(await finalizedOf(unknownHash('aa'))).toBe(0);
+    expect(await finalizedOf(unknownHash('bb'))).toBe(1);
+  });
+
   test('without the history, the first cursor is the current block', async () => {
     await chain.mine({ blocks: 5 });
     const current = await readerFor(network).getBlockNumber();

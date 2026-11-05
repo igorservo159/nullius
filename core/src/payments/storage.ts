@@ -205,10 +205,11 @@ export async function hasUnfinalizedPayments(
 }
 
 /**
- * Marks finalized every mined payment of `payer` on `network` whose block is at or below
- * `finalizedBlock`, whatever its outcome: the proof covers the block, not one transaction.
+ * Marks finalized every reverted payment of `payer` on `network` whose block is at or below
+ * `finalizedBlock`: the proof covers the block, so the revert is as final as the block. An
+ * executed payment is not marked here; `listExecutedUpTo` hands it to the `paid` question.
  */
-export async function markFinalizedUpTo(
+export async function markRevertedFinalizedUpTo(
   db: Database,
   payer: Address,
   network: Network,
@@ -217,7 +218,7 @@ export async function markFinalizedUpTo(
   await db.runAsync(
     `UPDATE sent_payments SET finalized = 1
      WHERE payer = ? AND chain_id = ? AND payments_address = ?
-       AND finalized = 0 AND block_number IS NOT NULL AND block_number <= ?`,
+       AND finalized = 0 AND status = 'reverted' AND block_number <= ?`,
     [
       getAddress(payer),
       network.chain.id,
@@ -225,6 +226,35 @@ export async function markFinalizedUpTo(
       Number(finalizedBlock),
     ],
   );
+}
+
+/**
+ * The executed payments of `payer` on `network`, not marked finalized yet, whose block is at or
+ * below `finalizedBlock`: the hash of each, and the order id Payments is asked about.
+ */
+export async function listExecutedUpTo(
+  db: Database,
+  payer: Address,
+  network: Network,
+  finalizedBlock: bigint,
+): Promise<{ hash: Hex; orderId: Hex }[]> {
+  const rows = await db.getAllAsync<{ hash: Hex; order_id: Hex }>(
+    `SELECT hash, order_id FROM sent_payments
+     WHERE payer = ? AND chain_id = ? AND payments_address = ?
+       AND finalized = 0 AND status = 'success' AND block_number <= ?`,
+    [
+      getAddress(payer),
+      network.chain.id,
+      getAddress(network.paymentsAddress),
+      Number(finalizedBlock),
+    ],
+  );
+  return rows.map((row) => ({ hash: row.hash, orderId: row.order_id }));
+}
+
+/** Marks finalized the payment kept under `hash`. */
+export async function markSentPaymentFinalized(db: Database, hash: Hex): Promise<void> {
+  await db.runAsync('UPDATE sent_payments SET finalized = 1 WHERE hash = ?', [hash]);
 }
 
 /** The status kept under `hash`, or null when the register has no such payment. */

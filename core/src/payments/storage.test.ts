@@ -9,9 +9,11 @@ import type { Network } from '../network/network';
 import type { Payment, RevertReason } from './chain';
 import {
   hasUnfinalizedPayments,
+  listExecutedUpTo,
   listPaymentsToResolve,
   listSentPayments,
-  markFinalizedUpTo,
+  markRevertedFinalizedUpTo,
+  markSentPaymentFinalized,
   saveFoundPayment,
   saveSignedPayment,
   setSentPaymentStatus,
@@ -194,18 +196,18 @@ test('a row that did not revert cannot carry a revert reason', async () => {
   ).rejects.toThrow(/CHECK/);
 });
 
-// Rows `aa` and `bb` are mined at blocks 10 and 20; `cc` has no block; `dd` is another payer's.
-test('marking up to a block finalizes the mined rows at or below it, and only those', async () => {
+// Rows `aa` and `bb` revert at blocks 10 and 20; `cc` executes at 10; `dd` is another payer's.
+test('marking reverted rows up to a block finalizes those at or below it, and only those', async () => {
   for (const byte of ['aa', 'bb', 'cc']) {
     await saveSignedPayment(db, signedAs(byte), newPayment(payer), sepoliaNetwork, 1);
   }
   await saveSignedPayment(db, signedAs('dd'), newPayment(otherPayer), sepoliaNetwork, 1);
-  await settleSentPayment(db, fakeHash('aa'), mined('success', 10n));
+  await settleSentPayment(db, fakeHash('aa'), mined('reverted', 10n, 'AlreadyPaid'));
   await settleSentPayment(db, fakeHash('bb'), mined('reverted', 20n, 'AlreadyPaid'));
-  await settleSentPayment(db, fakeHash('dd'), mined('success', 10n));
-  expect(await hasUnfinalizedPayments(db, payer, sepoliaNetwork)).toBe(true);
+  await settleSentPayment(db, fakeHash('cc'), mined('success', 10n));
+  await settleSentPayment(db, fakeHash('dd'), mined('reverted', 10n, 'AlreadyPaid'));
 
-  await markFinalizedUpTo(db, payer, sepoliaNetwork, 15n);
+  await markRevertedFinalizedUpTo(db, payer, sepoliaNetwork, 15n);
   const after15 = await listSentPayments(db, payer, sepoliaNetwork);
   expect(after15.map((sent) => [sent.hash, sent.finalized])).toEqual(
     expect.arrayContaining([
@@ -214,11 +216,28 @@ test('marking up to a block finalizes the mined rows at or below it, and only th
       [fakeHash('cc'), false],
     ]),
   );
-
-  await markFinalizedUpTo(db, payer, sepoliaNetwork, 20n);
-  expect(await hasUnfinalizedPayments(db, payer, sepoliaNetwork)).toBe(false);
   const [other] = await listSentPayments(db, otherPayer, sepoliaNetwork);
   expect(other?.finalized).toBe(false);
+});
+
+// Rows `aa` and `bb` execute at blocks 10 and 20; `cc` reverts at 10; `dd` has no block.
+test('the executed rows up to a block are listed with their order id until marked', async () => {
+  const payment = newPayment(payer);
+  await saveSignedPayment(db, signedAs('aa'), payment, sepoliaNetwork, 1);
+  for (const byte of ['bb', 'cc', 'dd']) {
+    await saveSignedPayment(db, signedAs(byte), newPayment(payer), sepoliaNetwork, 1);
+  }
+  await settleSentPayment(db, fakeHash('aa'), mined('success', 10n));
+  await settleSentPayment(db, fakeHash('bb'), mined('success', 20n));
+  await settleSentPayment(db, fakeHash('cc'), mined('reverted', 10n, 'AlreadyPaid'));
+
+  expect(await listExecutedUpTo(db, payer, sepoliaNetwork, 15n)).toEqual([
+    { hash: fakeHash('aa'), orderId: payment.orderId },
+  ]);
+
+  await markSentPaymentFinalized(db, fakeHash('aa'));
+  expect(await listExecutedUpTo(db, payer, sepoliaNetwork, 15n)).toEqual([]);
+  expect(await hasUnfinalizedPayments(db, payer, sepoliaNetwork)).toBe(true);
 });
 
 // Two readings of the same blocks at once both try to keep the payment: the second does nothing.

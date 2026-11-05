@@ -5,11 +5,13 @@ import type { Address } from 'viem';
 import type { Database } from '../database/database';
 import { readerFor, type Network } from '../network/network';
 import { byNonce, receiptOf, transactionOf } from '../transactions/transactions';
-import { outcomeOf } from './chain';
+import { isPaidAtBlock, outcomeOf } from './chain';
 import {
   hasUnfinalizedPayments,
+  listExecutedUpTo,
   listPaymentsToResolve,
-  markFinalizedUpTo,
+  markRevertedFinalizedUpTo,
+  markSentPaymentFinalized,
   setSentPaymentStatus,
   settleSentPayment,
 } from './storage';
@@ -52,11 +54,20 @@ export async function resolveSentPayments(
 
 /**
  * Marks finalized the payer's mined payments whose block is at or below the node's finalized
- * block: the proof of that block reached Ethereum. The node is asked only when some mined
- * payment is not marked yet, so a payer whose payments are all finalized costs no call.
+ * block: the proof of that block reached Ethereum. A reverted payment is marked by its block
+ * alone. An executed one is marked only when Payments holds its order id as paid in the state of
+ * the finalized block; one the proven chain lacks stays unmarked, and is asked about again at the
+ * next call. The node is asked only when some mined payment is not marked yet, so a payer whose
+ * payments are all finalized costs no call.
  */
 export async function markFinalized(db: Database, network: Network, payer: Address): Promise<void> {
   if (!(await hasUnfinalizedPayments(db, payer, network))) return;
-  const finalizedBlock = await readerFor(network).getBlock({ blockTag: 'finalized' });
-  await markFinalizedUpTo(db, payer, network, finalizedBlock.number);
+  const reader = readerFor(network);
+  const { number: finalizedBlock } = await reader.getBlock({ blockTag: 'finalized' });
+  await markRevertedFinalizedUpTo(db, payer, network, finalizedBlock);
+  for (const { hash, orderId } of await listExecutedUpTo(db, payer, network, finalizedBlock)) {
+    if (await isPaidAtBlock(reader, network, orderId, finalizedBlock)) {
+      await markSentPaymentFinalized(db, hash);
+    }
+  }
 }
