@@ -15,13 +15,7 @@ import {
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import {
-  createCharge,
-  encodeCharge,
-  listCharges,
-  markChargesFinalized,
-} from '@nullius/core/charges';
-import { readHistory } from '@nullius/core/history';
+import { createCharge, encodeCharge, listCharges } from '@nullius/core/charges';
 import { useAdapters } from '../adapters';
 import { chargeChip, ChargesScreen } from './ChargesScreen';
 import { ChargeQr } from './ChargeQr';
@@ -31,7 +25,7 @@ import { Icon } from '../components/Icon';
 import { useNotices } from '../components/notices';
 import { StatusChip } from '../components/StatusChip';
 import { colors, fonts, radius, space } from '../theme/theme';
-import { Layer, Page, styles as ui } from '../components/ui';
+import { Layer, Page } from '../components/ui';
 
 const RECEIVED_ICON = 'M17 7L7 17M15 17H7V9';
 // The three actions of the charge's card, as icons only.
@@ -61,7 +55,7 @@ function failureNotice(id, fields, error) {
   };
 }
 
-export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpenAccounts }) {
+export function ReceiveScreen({ network, accounts, payee, rounds, onOpenAccounts }) {
   const { show, dismiss } = useNotices();
   const { db } = useAdapters();
   // The amount as typed, in ETH.
@@ -73,8 +67,6 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
   const [charge, setCharge] = useState(null);
   // The charges kept for the chosen account on the network in use, newest first.
   const [charges, setCharges] = useState([]);
-  // How many blocks the history reading still has to read, while it reads; null otherwise.
-  const [blocksLeft, setBlocksLeft] = useState(null);
   // Whether `ChargesScreen`, every charge of the account, is open over the tab.
   const [listing, setListing] = useState(false);
   // Whether the card's charge is open as a QR code across the screen.
@@ -82,10 +74,10 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
   // Whether `generate` is running: Generate is off until it ends, so a double tap makes one charge.
   const [creating, setCreating] = useState(false);
 
-  // Read again after a charge is kept, and by `checkCharges`. Without both an account and an
-  // accepted network there is nothing to list. It never throws: a failed read empties the list,
-  // so another account's charges are not left under this one, and says why in a notice that
-  // stays until a read works.
+  // Read again after a charge is kept, and after every slice and round of the history reading,
+  // which `rounds` counts. Without both an account and an accepted network there is nothing to
+  // list. It never throws: a failed read empties the list, so another account's charges are not
+  // left under this one, and says why in a notice that stays until a read works.
   const loadCharges = useCallback(async () => {
     if (!network || !payee) {
       setCharges([]);
@@ -101,45 +93,11 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
     }
   }, [db, network, payee, show, dismiss]);
 
-  // Reads the account's `Payment` logs, which marks its charges paid, marks finalized the paid
-  // ones the finalized block passed, then reads the list again: when the tab opens, when the
-  // account or the network changes, and once the history question is answered. A charge
-  // finalized here puts up no notice; the list on screen says it. The list is read first too, so
-  // the charges show while a long reading runs. It never throws: a failed reading leaves the
-  // charges as kept and says why in a notice that stays until a reading works.
-  const checkCharges = useCallback(async () => {
-    if (network && payee) {
-      try {
-        await loadCharges();
-        await readHistory(db, network, payee, (nextBlock, lastBlock) =>
-          setBlocksLeft(lastBlock - nextBlock + 1n),
-        );
-        await markChargesFinalized(db, network, payee);
-        dismiss('charges-check-failure');
-      } catch (error) {
-        const fields = {
-          kind: 'attention',
-          title: 'Charges not checked',
-          body: error.shortMessage ?? error.message,
-          expiresAfter: undefined,
-        };
-        show(failureNotice('charges-check-failure', fields, error));
-      } finally {
-        setBlocksLeft(null);
-      }
-    }
-    await loadCharges();
-  }, [db, network, payee, loadCharges, show, dismiss]);
-
-  useEffect(() => {
-    checkCharges();
-  }, [checkCharges]);
-
-  // A charge paid or finalized while the tab is open puts up a notice; the list is read again so
-  // it says so too.
+  // When the tab opens, when the account or the network changes, and whenever the history
+  // reading above the tabs wrote: a charge it found paid or finalized shows so in the list too.
   useEffect(() => {
     loadCharges();
-  }, [changedCharges, loadCharges]);
+  }, [rounds, loadCharges]);
 
   // `createCharge` draws the salt and keeps the charge before it comes back. The keyboard goes
   // down so the card it would cover shows.
@@ -215,10 +173,6 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
             </Header>
           }
         >
-          {blocksLeft !== null && blocksLeft > 0n && (
-            <Text style={ui.hint}>Reading the history: {String(blocksLeft)} blocks left.</Text>
-          )}
-
           <Text style={styles.title}>New charge</Text>
 
           <View style={styles.field}>

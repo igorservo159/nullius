@@ -14,10 +14,10 @@ import { AdaptersProvider, openAdapters, useAdapters } from './adapters';
 import { BridgeScreen } from './bridge/BridgeScreen';
 import { useClaimable } from './bridge/claimable';
 import { openStoredNetwork } from '@nullius/core/network';
+import { HistoryProgressContext, useHistoryReading } from './history/historyReading';
 import { useOldHistory } from './history/OldHistory';
 import { NoticesContext, useNoticeList } from './components/notices';
 import { NetworkScreen } from './network/NetworkScreen';
-import { usePaidCharges } from './charges/paidCharges';
 import { PayScreen } from './payments/PayScreen';
 import { ReceiveScreen } from './charges/ReceiveScreen';
 import { TabBar } from './components/TabBar';
@@ -131,9 +131,6 @@ function Nullius() {
 
   const { notices, show, dismiss, hold } = useNoticeList();
 
-  // Watched from here, above the tabs, so a charge paid or finalized while any tab is open is
-  // noticed. Opening the receive tab, where the charge is, takes the notice down.
-  const changedCharges = usePaidCharges(network, chosenAccount, show);
 
   // Checked from here too, so a withdrawal that became claimable is noticed on every tab but the
   // bridge, where the claim is. Opening the bridge takes the notice down until the next check.
@@ -176,6 +173,17 @@ function Nullius() {
   // Kept here, above the tabs, so the chosen account's cursor is started whichever tab is open.
   const oldHistory = useOldHistory(network, chosenAccount);
 
+  // Read from here, above the tabs, so one reading of the chosen account runs whichever tab is
+  // open, and a charge paid or finalized meanwhile is noticed. Opening the receive tab, where the
+  // charge is, takes the notice down. The tabs read their lists again when `rounds` grows.
+  const { rounds, blocksLeft } = useHistoryReading(
+    network,
+    chosenAccount,
+    oldHistory.moved,
+    show,
+    dismiss,
+  );
+
   useEffect(() => {
     if (tab === 'bridge') dismiss('claimable');
     if (tab === 'receive') dismiss('charges');
@@ -185,52 +193,55 @@ function Nullius() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* The tabs live at the bottom, so the status bar's height is kept clear up here. */}
       <NoticesContext.Provider value={{ notices, tab, show, dismiss, hold }}>
-        <View style={{ flex: 1, paddingTop: insets.top }}>
+        <HistoryProgressContext.Provider value={blocksLeft}>
+          <View style={{ flex: 1, paddingTop: insets.top }}>
 
-          {tab === 'pay' && (
-            <PayScreen
-              network={network}
-              networkFailure={networkFailure}
-              accounts={accounts}
-              payer={chosenAccount}
-              onOpenAccounts={() => setTab('accounts')}
-            />
-          )}
-          {tab === 'receive' && (
-            <ReceiveScreen
-              network={network}
-              accounts={accounts}
-              payee={chosenAccount}
-              changedCharges={changedCharges}
-              onOpenAccounts={() => setTab('accounts')}
-            />
-          )}
-          {tab === 'bridge' && (
-            <BridgeScreen
-              network={network}
-              accounts={accounts}
-              account={chosenAccount}
-              onOpenAccounts={() => setTab('accounts')}
-            />
-          )}
-          {tab === 'accounts' && (
-            <AccountsScreen
-              network={network}
-              accounts={accounts}
-              chosen={chosenAccount}
-              onChoose={chooseAccount}
-              onChanged={loadAccounts}
-              oldHistory={oldHistory}
-            />
-          )}
-          {tab === 'network' && (
-            <NetworkScreen
-              network={network}
-              networkFailure={networkFailure}
-              onNetworkChanged={changeNetwork}
-            />
-          )}
-        </View>
+            {tab === 'pay' && (
+              <PayScreen
+                network={network}
+                networkFailure={networkFailure}
+                accounts={accounts}
+                payer={chosenAccount}
+                rounds={rounds}
+                onOpenAccounts={() => setTab('accounts')}
+              />
+            )}
+            {tab === 'receive' && (
+              <ReceiveScreen
+                network={network}
+                accounts={accounts}
+                payee={chosenAccount}
+                rounds={rounds}
+                onOpenAccounts={() => setTab('accounts')}
+              />
+            )}
+            {tab === 'bridge' && (
+              <BridgeScreen
+                network={network}
+                accounts={accounts}
+                account={chosenAccount}
+                onOpenAccounts={() => setTab('accounts')}
+              />
+            )}
+            {tab === 'accounts' && (
+              <AccountsScreen
+                network={network}
+                accounts={accounts}
+                chosen={chosenAccount}
+                onChoose={chooseAccount}
+                onChanged={loadAccounts}
+                oldHistory={oldHistory}
+              />
+            )}
+            {tab === 'network' && (
+              <NetworkScreen
+                network={network}
+                networkFailure={networkFailure}
+                onNetworkChanged={changeNetwork}
+              />
+            )}
+          </View>
+        </HistoryProgressContext.Provider>
       </NoticesContext.Provider>
       <TabBar tab={tab} onChange={setTab} />
     </View>

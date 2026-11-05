@@ -4,6 +4,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDay } from '../theme/format';
 import { Icon } from './Icon';
+import { HistoryProgress } from '../history/historyReading';
 import { NoticeBar } from './Notice';
 import { colors, fonts, radius, space } from '../theme/theme';
 import { pageGutter } from './ui';
@@ -11,7 +12,8 @@ import { pageGutter } from './ui';
 const BACK = 'M15 5l-7 7 7 7';
 
 /// "‹ `label`", which calls `onBack`, and `aside` on the right when given; below them, as under
-/// the tabs' header, the band with the notice that matters most on this tab.
+/// the tabs' header, the line of the history reading and the band with the notice that matters
+/// most on this tab.
 export function BackHeader({ label, aside, onBack }) {
   return (
     <>
@@ -22,6 +24,7 @@ export function BackHeader({ label, aside, onBack }) {
         </Pressable>
         {aside !== undefined && <Text style={styles.aside}>{aside}</Text>}
       </View>
+      <HistoryProgress />
       <NoticeBar />
     </>
   );

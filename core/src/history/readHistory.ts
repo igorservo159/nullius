@@ -120,8 +120,8 @@ async function recordReceivedLog(
  * `sliceBlocks`, saving the cursor at the end of each slice: an app closed in the middle goes on
  * from the next slice. Each slice is asked twice, once with the account as payer and once as
  * payee, since a log filter joins its positions with AND; the cursor moves only after both.
- * Without a cursor the history question is unanswered and nothing is read. `onSlice` hears the
- * next block to read and the last one of this reading, after every slice.
+ * Without a cursor nothing is read. `onSlice` hears the next block to read and the last one of
+ * this reading, after every slice.
  */
 export async function readHistory(
   db: Database,

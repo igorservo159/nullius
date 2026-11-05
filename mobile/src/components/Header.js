@@ -3,12 +3,14 @@
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { shortAddress } from '../theme/format';
+import { HistoryProgress } from '../history/historyReading';
 import { NoticeBar } from './Notice';
 import { NulliusMark } from './NulliusMark';
 import { colors, fonts, radius } from '../theme/theme';
 
 /// The mark at 26 with the thicker stroke the boards use at that size, then the name; below
-/// them, the band with the notice that matters most on this tab.
+/// them, the line of the history reading while it runs, and the band with the notice that
+/// matters most on this tab.
 export function Header({ children }) {
   return (
     <>
@@ -19,6 +21,7 @@ export function Header({ children }) {
         </View>
         {children}
       </View>
+      <HistoryProgress />
       <NoticeBar />
     </>
   );

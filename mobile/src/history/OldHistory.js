@@ -11,8 +11,8 @@ import { colors, fonts, space } from '../theme/theme';
 
 /**
  * Starts the cursor of `account` on `network` at the current block when it has none, and gives
- * `readFromDeploy`, which moves it back to the block that published Payments. The readings the
- * tabs already make, every time they open and every few seconds on the receive side, then go
+ * `readFromDeploy`, which moves it back to the block that published Payments. The history
+ * reading above the tabs, `useHistoryReading`, starts a round as `moved` turns true and goes
  * through the older blocks. `failure` says why starting or moving the cursor failed; null while
  * nothing failed. `moved` is true once the cursor was moved back, until the account or network
  * changes.
@@ -58,8 +58,8 @@ export function OldHistoryLink({ label, history }) {
     <View style={styles.box}>
       {moved ? (
         <Text style={styles.note}>
-          Reading {label}'s history since the contract was deployed: Pay and Receive show how far
-          it got.
+          Reading {label}'s history since the contract was deployed: every tab shows how far it
+          got.
         </Text>
       ) : (
         <Pressable onPress={readFromDeploy} disabled={busy}>

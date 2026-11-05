@@ -5,11 +5,12 @@ import { BackHandler, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { AccountWithoutKey, BiometricRefused } from '@nullius/core/accounts';
 import { ChargeOnOtherNetwork, decodeCharge } from '@nullius/core/charges';
-import { refreshPayments } from '@nullius/core/history';
 import {
   listSentPayments,
+  markFinalized,
   PaymentRefused,
   payCharge,
+  resolveSentPayments,
 } from '@nullius/core/payments';
 import {
   NodeRejected,
@@ -133,7 +134,7 @@ function paymentNotice(payment, settled) {
   };
 }
 
-export function PayScreen({ network, networkFailure, accounts, payer, onOpenAccounts }) {
+export function PayScreen({ network, networkFailure, accounts, payer, rounds, onOpenAccounts }) {
   const { show, dismiss } = useNotices();
   const { db, secretStore } = useAdapters();
   const [payee, setPayee] = useState('');
@@ -157,10 +158,9 @@ export function PayScreen({ network, networkFailure, accounts, payer, onOpenAcco
   const [sending, setSending] = useState(false);
   // The payments kept for the chosen payer on the network in use, newest first.
   const [sentPayments, setSentPayments] = useState([]);
-  // How many blocks the history reading still has to read, while it reads; null otherwise.
-  const [blocksLeft, setBlocksLeft] = useState(null);
 
-  // Read again after every write, and by `checkSentPayments`. It never throws: a failed read
+  // Read again after every write, by `checkSentPayments`, and after every slice and round of the
+  // history reading above the tabs, which `rounds` counts. It never throws: a failed read
   // empties the list, so another payer's payments are not left under this one, and says why in a
   // notice that stays until a read works: the payments may all be kept, only reading them failed.
   const loadSentPayments = useCallback(async () => {
@@ -182,43 +182,39 @@ export function PayScreen({ network, networkFailure, accounts, payer, onOpenAcco
     }
   }, [db, network, payer, show, dismiss]);
 
-  // Asks the node about the payer's payments that have no final status, reads the payer's
-  // `Payment` logs when `withHistory` says so, asks about the finalized block, then reads the
-  // list. With the history: when the tab opens, when the payer or the network changes, and once
-  // the history question is answered. Without it, so a first long reading never holds a payment
-  // back: before a payment, and after a send the node did not answer. Never in the middle of a
-  // payment, where a row just signed and not yet sent would read as lost. It never throws: a
-  // failed check leaves the rows as kept and says why in a notice that stays until a check works.
-  const checkSentPayments = useCallback(
-    async (withHistory) => {
-      if (network && payer) {
-        try {
-          await refreshPayments(db, network, payer, {
-            withHistory,
-            onResolved: loadSentPayments,
-            onSlice: (nextBlock, lastBlock) => setBlocksLeft(lastBlock - nextBlock + 1n),
-          });
-          dismiss('check-failure');
-        } catch (error) {
-          const fields = {
-            kind: 'attention',
-            title: 'Payments not checked',
-            body: error.shortMessage ?? error.message,
-            expiresAfter: undefined,
-          };
-          show(failureNotice('check-failure', fields, error));
-        } finally {
-          setBlocksLeft(null);
-        }
+  // Asks the node about the payer's payments that have no final status and about the finalized
+  // block, then reads the list: when the tab opens, when the payer or the network changes, before
+  // a payment, and after a send the node did not answer. The `Payment` logs are the history
+  // reading's, above the tabs. Never in the middle of a payment, where a row just signed and not
+  // yet sent would read as lost. It never throws: a failed check leaves the rows as kept and says
+  // why in a notice that stays until a check works.
+  const checkSentPayments = useCallback(async () => {
+    if (network && payer) {
+      try {
+        await resolveSentPayments(db, network, payer);
+        await markFinalized(db, network, payer);
+        dismiss('check-failure');
+      } catch (error) {
+        const fields = {
+          kind: 'attention',
+          title: 'Payments not checked',
+          body: error.shortMessage ?? error.message,
+          expiresAfter: undefined,
+        };
+        show(failureNotice('check-failure', fields, error));
       }
-      await loadSentPayments();
-    },
-    [db, network, payer, loadSentPayments, show, dismiss],
-  );
+    }
+    await loadSentPayments();
+  }, [db, network, payer, loadSentPayments, show, dismiss]);
 
   useEffect(() => {
-    checkSentPayments(true);
+    checkSentPayments();
   }, [checkSentPayments]);
+
+  // A payment the history reading found or finalized shows in the list too.
+  useEffect(() => {
+    loadSentPayments();
+  }, [rounds, loadSentPayments]);
 
   // A failed payment belongs to the account that tried it: another account starts clean.
   useEffect(() => {
@@ -279,7 +275,7 @@ export function PayScreen({ network, networkFailure, accounts, payer, onOpenAcco
     dismiss('payment');
     dismiss('pay-failure');
     dismiss('record-failure');
-    await checkSentPayments(false);
+    await checkSentPayments();
     const payment = { payer, payee, valueWei: BigInt(valueWei), salt, orderId };
     // `payCharge` keeps the payment before its bytes leave the phone; each stage it reaches is
     // read back into the list, and the sent and settled ones also get their notice.
@@ -313,7 +309,7 @@ export function PayScreen({ network, networkFailure, accounts, payer, onOpenAcco
           body: 'The transaction may have arrived; the list will tell',
         };
         show(failureNotice('pay-failure', fields, error));
-        await checkSentPayments(false);
+        await checkSentPayments();
       } else {
         const label = accounts.find((account) => account.address === payer)?.label;
         const [fields, sentence] = payFailure(error, label);
@@ -359,10 +355,6 @@ export function PayScreen({ network, networkFailure, accounts, payer, onOpenAcco
         >
           {/* While the node is checked when the app opens; a failure is a notice from `App.js`. */}
           {!network && !networkFailure && <Text style={styles.hint}>checking the node…</Text>}
-
-          {blocksLeft !== null && blocksLeft > 0n && (
-            <Text style={styles.hint}>Reading the history: {String(blocksLeft)} blocks left.</Text>
-          )}
 
           <View style={styles.tools}>
             <ToolButton
