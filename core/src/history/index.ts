@@ -1,4 +1,4 @@
-// What `mobile/` uses of the history: where each account's reading stands, and reading it.
+// What `mobile/` uses of the history: where each account's reading stands, and a round of it.
 
 export { readCursor, startCursor } from './cursors';
-export { readHistory } from './readHistory';
+export { readRound } from './readRound';

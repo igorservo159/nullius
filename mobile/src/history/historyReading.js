@@ -5,21 +5,19 @@
 // puts up one notice for the charges that turned paid or finalized. How many blocks are left is
 // shown under the header of every tab.
 
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Text } from 'react-native';
-import { listCharges, markChargesFinalized, newlyPaid } from '@nullius/core/charges';
-import { readHistory } from '@nullius/core/history';
-import { markFinalized } from '@nullius/core/payments';
 import { useAdapters } from '../adapters';
 import { styles as ui } from '../components/ui';
 import { formatEth, shortAddress } from '../theme/format';
+import { runRound } from './round';
 
 // How often a round runs while the app is open. Each round after the first is usually one
 // slice: the block number and two log searches.
 const watchMs = 10_000;
 
 // Thrown from `onSlice` to stop a round whose account or network is no longer the one in use:
-// `readHistory` saves the cursor before calling `onSlice`, so the slice read is kept.
+// `readRound` stops after the slice, whose cursor is already saved.
 class RoundStopped extends Error {}
 
 /**
@@ -28,44 +26,34 @@ class RoundStopped extends Error {}
  * every round, for the tabs to read their lists again, and `blocksLeft`, how many blocks the
  * running round still has to read, null when none runs.
  *
- * A round never starts while another runs, whichever account it reads: the next is skipped. A
- * round whose account or network stops being the one in use stops after its current slice. A
- * round that fails puts up a notice that stays until a round works.
+ * A round never starts while another runs, whichever account it reads and whoever started it:
+ * `runRound` skips it, and the next one tries again. A round whose account or network stops
+ * being the one in use stops after its current slice. A round that fails puts up a notice that
+ * stays until a round works.
  */
 export function useHistoryReading(network, account, askedFrom, show, dismiss) {
   const { db } = useAdapters();
   const [rounds, setRounds] = useState(0);
   const [blocksLeft, setBlocksLeft] = useState(null);
-  // Shared by every run of the effect below, so a round of the previous account blocks one of
-  // the next until it stops.
-  const reading = useRef(false);
 
   useEffect(() => {
     if (!network || !account) return;
     let stopped = false;
     async function round() {
-      if (reading.current) return;
-      reading.current = true;
       try {
-        const before = await listCharges(db, account, network);
-        await readHistory(db, network, account, (nextBlock, lastBlock) => {
+        const found = await runRound(db, network, account, (nextBlock, lastBlock) => {
           if (stopped) throw new RoundStopped();
           setBlocksLeft(lastBlock - nextBlock + 1n);
           setRounds((count) => count + 1);
         });
-        const finalizedIds = await markChargesFinalized(db, network, account);
-        await markFinalized(db, network, account);
-        const after = await listCharges(db, account, network);
-        if (stopped) return;
+        if (found === null || stopped) return;
         dismiss('history-failure');
         setRounds((count) => count + 1);
-        const paid = newlyPaid(before, after);
-        const finalized = after.filter((charge) => finalizedIds.includes(charge.orderId));
+        const { paid, finalized } = found;
         if (paid.length > 0 || finalized.length > 0) show(chargesNotice(paid, finalized));
       } catch (error) {
         if (!stopped) show(failureNotice(error));
       } finally {
-        reading.current = false;
         if (!stopped) setBlocksLeft(null);
       }
     }
