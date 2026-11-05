@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from 'vitest';
 import type { Database } from './database';
 import { memoryDatabase } from './memoryDatabase';
-import { migrate, schemaVersion } from './migrations';
+import { migrate, schemaVersion, steps } from './migrations';
 
 async function version(db: Database): Promise<number> {
   const [row] = await db.getAllAsync<{ user_version: number }>('PRAGMA user_version', []);
@@ -23,7 +23,7 @@ test('an empty database ends at the last version with every table', async () => 
   await migrate(db);
   expect(await version(db)).toBe(schemaVersion);
   expect(await columns(db, 'charges')).toEqual(
-    expect.arrayContaining(['order_id', 'paid_hash', 'paid_block']),
+    expect.arrayContaining(['order_id', 'paid_hash', 'paid_block', 'paid_finalized']),
   );
   expect(await columns(db, 'account_cursors')).toContain('next_block');
   expect(await columns(db, 'bridge_transfers')).toEqual(
@@ -45,6 +45,27 @@ test('running it again changes nothing', async () => {
   await migrate(db);
   await migrate(db);
   expect(await version(db)).toBe(schemaVersion);
+});
+
+// A phone at version 1 with a paid charge and one waiting: version 2 keeps both, unfinalized.
+test('a database at version 1 keeps its charges, unfinalized, at version 2', async () => {
+  await db.execAsync(steps[0]);
+  await db.execAsync('PRAGMA user_version = 1');
+  await db.execAsync(`INSERT INTO charges
+    (order_id, chain_id, payments_address, payee, value_wei, salt, created_at,
+     paid_hash, paid_block)
+    VALUES ('0xc1', 59141, '0xp', '0xpayee', '1000', '0xs1', 10, '0xh1', 77),
+           ('0xc2', 59141, '0xp', '0xpayee', '1000', '0xs2', 11, NULL, NULL)`);
+
+  await migrate(db);
+
+  expect(await version(db)).toBe(schemaVersion);
+  expect(
+    await db.getAllAsync('SELECT order_id, paid_finalized FROM charges ORDER BY order_id', []),
+  ).toEqual([
+    { order_id: '0xc1', paid_finalized: 0 },
+    { order_id: '0xc2', paid_finalized: 0 },
+  ]);
 });
 
 // The order id does not carry the network: the same charge kept on two contracts is two rows.

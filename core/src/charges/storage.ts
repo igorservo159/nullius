@@ -7,12 +7,14 @@ import type { Charge } from './rules';
 
 /**
  * A charge as the list shows it: the four fields, when it was generated, and, once paid, the
- * transaction that paid it and its block. Both are null while it waits.
+ * transaction that paid it and its block. Both are null while it waits. `paidFinalized` says
+ * Payments holds it as paid in the state of a finalized block.
  */
 export type StoredCharge = Charge & {
   createdAt: number;
   paidHash: Hex | null;
   paidBlock: bigint | null;
+  paidFinalized: boolean;
 };
 
 // One row of `charges` as SQLite hands it back, for the columns `listCharges` selects.
@@ -24,6 +26,7 @@ type ChargeRow = {
   created_at: number;
   paid_hash: Hex | null;
   paid_block: number | null;
+  paid_finalized: number;
 };
 
 /**
@@ -60,7 +63,8 @@ export async function listCharges(
   network: Network,
 ): Promise<StoredCharge[]> {
   const rows = await db.getAllAsync<ChargeRow>(
-    `SELECT order_id, payee, value_wei, salt, created_at, paid_hash, paid_block FROM charges
+    `SELECT order_id, payee, value_wei, salt, created_at, paid_hash, paid_block, paid_finalized
+     FROM charges
      WHERE payee = ? AND chain_id = ? AND payments_address = ?
      ORDER BY created_at DESC`,
     [getAddress(payee), network.chain.id, getAddress(network.paymentsAddress)],
@@ -73,6 +77,7 @@ export async function listCharges(
     createdAt: row.created_at,
     paidHash: row.paid_hash,
     paidBlock: row.paid_block === null ? null : BigInt(row.paid_block),
+    paidFinalized: row.paid_finalized === 1,
   }));
 }
 
@@ -148,5 +153,59 @@ export async function markChargePaid(
       network.chain.id,
       getAddress(network.paymentsAddress),
     ],
+  );
+}
+
+/** Whether `payee` has, on `network`, a paid charge not yet marked finalized. */
+export async function hasUnfinalizedCharges(
+  db: Database,
+  payee: Address,
+  network: Network,
+): Promise<boolean> {
+  const rows = await db.getAllAsync<{ found: number }>(
+    `SELECT 1 AS found
+     FROM charges
+     WHERE payee = ? AND chain_id = ? AND payments_address = ?
+       AND paid_finalized = 0 AND paid_block IS NOT NULL
+     LIMIT 1`,
+    [getAddress(payee), network.chain.id, getAddress(network.paymentsAddress)],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * The order ids of the paid charges of `payee` on `network`, not marked finalized yet, whose
+ * paying block is at or below `finalizedBlock`: the ones Payments is asked about.
+ */
+export async function listPaidUpTo(
+  db: Database,
+  payee: Address,
+  network: Network,
+  finalizedBlock: bigint,
+): Promise<Hex[]> {
+  const rows = await db.getAllAsync<{ order_id: Hex }>(
+    `SELECT order_id FROM charges
+     WHERE payee = ? AND chain_id = ? AND payments_address = ?
+       AND paid_finalized = 0 AND paid_block <= ?`,
+    [
+      getAddress(payee),
+      network.chain.id,
+      getAddress(network.paymentsAddress),
+      Number(finalizedBlock),
+    ],
+  );
+  return rows.map((row) => row.order_id);
+}
+
+/** Marks finalized the charge with `orderId` on `network`. */
+export async function markChargeFinalized(
+  db: Database,
+  network: Network,
+  orderId: Hex,
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE charges SET paid_finalized = 1
+     WHERE order_id = ? AND chain_id = ? AND payments_address = ?`,
+    [orderId, network.chain.id, getAddress(network.paymentsAddress)],
   );
 }

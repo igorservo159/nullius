@@ -7,7 +7,10 @@ import type { Network } from '../network/network';
 import { orderId, randomSalt, type Charge } from './rules';
 import {
   findCharge,
+  hasUnfinalizedCharges,
   listCharges,
+  listPaidUpTo,
+  markChargeFinalized,
   markChargePaid,
   saveCharge,
   saveRecoveredCharge,
@@ -41,7 +44,7 @@ test('a saved charge comes back in the list', async () => {
   const charge = newCharge(payee, 1000n);
   await saveCharge(db, charge, sepoliaNetwork, 1);
   expect(await listCharges(db, payee, sepoliaNetwork)).toEqual([
-    { ...charge, createdAt: 1, paidHash: null, paidBlock: null },
+    { ...charge, createdAt: 1, paidHash: null, paidBlock: null, paidFinalized: false },
   ]);
 });
 
@@ -132,6 +135,33 @@ test('a recovered charge is kept as paid, and recovering it again changes nothin
   await saveRecoveredCharge(db, charge, sepoliaNetwork, 5, payingHash, 77n);
   await saveRecoveredCharge(db, charge, sepoliaNetwork, 9, `0x${'bb'.repeat(32)}`, 88n);
   expect(await listCharges(db, payee, sepoliaNetwork)).toEqual([
-    { ...charge, createdAt: 5, paidHash: payingHash, paidBlock: 77n },
+    { ...charge, createdAt: 5, paidHash: payingHash, paidBlock: 77n, paidFinalized: false },
   ]);
+});
+
+// Charges `a` and `b` are paid at blocks 10 and 20; `c` waits; `d`, another payee's, is paid at 10.
+test('the paid charges up to a block are listed until marked finalized', async () => {
+  const [a, b, c] = [newCharge(payee, 1n), newCharge(payee, 2n), newCharge(payee, 3n)];
+  const d = newCharge(otherPayee, 4n);
+  for (const charge of [a, b, c, d]) await saveCharge(db, charge, sepoliaNetwork, 1);
+  await markChargePaid(db, sepoliaNetwork, a.orderId, payingHash, 10n);
+  await markChargePaid(db, sepoliaNetwork, b.orderId, `0x${'bb'.repeat(32)}`, 20n);
+  await markChargePaid(db, sepoliaNetwork, d.orderId, `0x${'dd'.repeat(32)}`, 10n);
+
+  expect(await listPaidUpTo(db, payee, sepoliaNetwork, 15n)).toEqual([a.orderId]);
+
+  await markChargeFinalized(db, sepoliaNetwork, a.orderId);
+  expect(await listPaidUpTo(db, payee, sepoliaNetwork, 15n)).toEqual([]);
+  expect(await hasUnfinalizedCharges(db, payee, sepoliaNetwork)).toBe(true);
+  const listed = await listCharges(db, payee, sepoliaNetwork);
+  expect(listed.find((stored) => stored.orderId === a.orderId)?.paidFinalized).toBe(true);
+
+  await markChargeFinalized(db, sepoliaNetwork, b.orderId);
+  expect(await hasUnfinalizedCharges(db, payee, sepoliaNetwork)).toBe(false);
+});
+
+test('a charge cannot be finalized before it is paid', async () => {
+  const charge = newCharge(payee, 1000n);
+  await saveCharge(db, charge, sepoliaNetwork, 1);
+  await expect(markChargeFinalized(db, sepoliaNetwork, charge.orderId)).rejects.toThrow(/CHECK/);
 });

@@ -29,7 +29,7 @@ beforeEach(async () => {
 test('a created charge is kept, and its text decodes to its fields', async () => {
   const { text, ...charge } = await createCharge(db, network, payee, 1000n, 7);
   expect(await listCharges(db, payee, network)).toEqual([
-    { ...charge, createdAt: 7, paidHash: null, paidBlock: null },
+    { ...charge, createdAt: 7, paidHash: null, paidBlock: null, paidFinalized: false },
   ]);
   expect(decodeCharge(text, network)).toEqual(charge);
 });

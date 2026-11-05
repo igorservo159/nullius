@@ -148,12 +148,14 @@ describe.skipIf(anvil === null)('readHistory on anvil', () => {
           createdAt: 1,
           paidHash: first.transaction.hash,
           paidBlock: first.outcome.blockNumber,
+          paidFinalized: false,
         },
         {
           ...lost,
           createdAt: Number(secondBlock.timestamp) * 1000,
           paidHash: second.transaction.hash,
           paidBlock: second.outcome.blockNumber,
+          paidFinalized: false,
         },
       ]),
     );

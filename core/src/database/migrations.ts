@@ -6,9 +6,10 @@ import type { Database } from './database';
 /**
  * Each step takes the database from one version to the next: step `i` (counting from 0) brings
  * it to version `i + 1`. A step a phone may already have run is never edited; a change to the
- * schema is a new step at the end.
+ * schema is a new step at the end. Exported for the tests that build a database at an older
+ * version.
  */
-const steps: string[] = [
+export const steps: string[] = [
   // Version 1, the four tables.
   //
   // Every amount in wei is TEXT, in decimal: SQLite's INTEGER holds 64 signed bits, which in wei
@@ -96,6 +97,15 @@ const steps: string[] = [
     message_nonce INTEGER,
     sent_at       INTEGER NOT NULL
   );
+  `,
+
+  // Version 2, finalization on the payee's side. `paid_finalized` says Payments holds the
+  // charge's order id as paid in the state of a finalized block, 0 or 1 as `finalized` in
+  // `sent_payments`; only a paid charge can be finalized. A charge kept before this version
+  // starts at 0, and the next reading asks about it.
+  `
+  ALTER TABLE charges ADD COLUMN paid_finalized INTEGER NOT NULL DEFAULT 0
+    CHECK (paid_finalized IN (0, 1) AND (paid_finalized = 0 OR paid_block IS NOT NULL));
   `,
 ];
 
