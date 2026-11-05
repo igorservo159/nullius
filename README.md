@@ -59,9 +59,9 @@ sits between the payer and the receiver, because there is no party to sit there.
 | Area | What the app does |
 |---|---|
 | Accounts | Imports up to 5 accounts from their private keys, keeps each key in the Android Keystore behind a fingerprint, chooses the account in use, copies its address, removes it. |
-| Receive | Creates a charge, shows it as a QR code and as a 256-character text, lists the account's charges, and tells the user when one is paid. |
+| Receive | Creates a charge, shows it as a QR code and as a 256-character text, lists the account's charges as pending, paid or finalized on Ethereum, tells the user when one is paid or finalized, and asks before making a second charge of the amount already on screen. |
 | Pay | Reads a charge from a QR code, pasted text or typed fields; refuses one made for another network or whose order id does not match; pays it and follows the payment until it is final. |
-| Payment status | Signed, rejected by the node, pending, lost, queued, replaced, executed or reverted, and whether its block is finalized on Ethereum; when the contract refuses, the app says which check did. |
+| Payment status | Signed, rejected by the node, pending, lost, queued, replaced, executed or reverted, and whether the finalized state on Ethereum holds it paid; when the contract refuses, the app says which check did. |
 | History | Rebuilds paid charges and payments made outside the app, or lost with its data, from the contract's logs. |
 | Balances | Shows each account's ETH balance on Ethereum and on Linea. |
 | Bridge | Deposits ETH from Ethereum to Linea and withdraws it back through Linea's canonical bridge, and claims a withdrawal on Ethereum with a proof the app builds itself. |
@@ -85,10 +85,10 @@ sits between the payer and the receiver, because there is no party to sit there.
 ## Limitations
 
 > [!NOTE]
-> These are the limits of **version 1.0**, the first one that works end to end, not limits of the
-> design. Each has a known way forward.
+> These are the limits of **version 1.1**, not limits of the design. Each has a known way
+> forward.
 
-| Today, in 1.0 | Way forward |
+| Today, in 1.1 | Way forward |
 |---|---|
 | **Android only.** Nothing was built or tested on iOS. | The iOS port, next in line. |
 | **ETH only.** No stablecoin charges: an issuer such as Circle can freeze an account or pause its token, which brings an intermediary back. | USDC charges paid with `permit` (EIP-2612) straight to the receiver, with the issuer's powers stated plainly to both sides. |
@@ -96,6 +96,7 @@ sits between the payer and the receiver, because there is no party to sit there.
 | **A fingerprint is required.** Keys are stored only behind strong biometrics, and enrolling a new fingerprint makes them unreadable. | Authentication that also accepts the device PIN and survives a new enrollment. |
 | **Notices only while the app is open.** A paid charge or a claimable withdrawal is announced inside the app. | Android notifications for both. |
 | **Public nodes see your activity**: your IP address and your accounts. | Already in reach: point the app at a node you trust, in *Network*. |
+| **One node answers.** Paid and finalized are what the node in use says; a node stuck on a fork would say it consistently. | Asking a second node, or reading Linea's finalization on Ethereum directly. |
 | **A withdrawal takes hours.** Moving ETH back to Ethereum waits for Linea to finalize there. | Set by Linea's proofs, not by the app: it shortens as Linea's finalization does. |
 | **Not audited.** | An independent review of the contract and the app. |
 
