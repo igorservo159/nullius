@@ -131,9 +131,9 @@ function Nullius() {
 
   const { notices, show, dismiss, hold } = useNoticeList();
 
-  // Watched from here, above the tabs, so a charge paid while any tab is open is noticed. Opening
-  // the receive tab, where the charge is, takes the notice down.
-  const paidCharges = usePaidCharges(network, chosenAccount, show);
+  // Watched from here, above the tabs, so a charge paid or finalized while any tab is open is
+  // noticed. Opening the receive tab, where the charge is, takes the notice down.
+  const changedCharges = usePaidCharges(network, chosenAccount, show);
 
   // Checked from here too, so a withdrawal that became claimable is noticed on every tab but the
   // bridge, where the claim is. Opening the bridge takes the notice down until the next check.
@@ -178,7 +178,7 @@ function Nullius() {
 
   useEffect(() => {
     if (tab === 'bridge') dismiss('claimable');
-    if (tab === 'receive') dismiss('paid');
+    if (tab === 'receive') dismiss('charges');
   }, [tab, dismiss]);
 
   return (
@@ -201,7 +201,7 @@ function Nullius() {
               network={network}
               accounts={accounts}
               payee={chosenAccount}
-              paidCharges={paidCharges}
+              changedCharges={changedCharges}
               onOpenAccounts={() => setTab('accounts')}
             />
           )}

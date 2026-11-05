@@ -10,9 +10,13 @@ import { StatusChip } from '../components/StatusChip';
 import { colors, fonts, radius, space } from '../theme/theme';
 import { Page } from '../components/ui';
 
-/// The chip of a charge: paid once a `Payment` log carried its order id, pending until then.
-export function chargeChip(paid) {
-  return paid ? { state: 'confirmed', label: 'Paid' } : { state: 'pending', label: 'Pending' };
+/// The chip of a charge: pending until a `Payment` log carried its order id, paid then, and
+/// finalized once Payments holds it paid in the state of a finalized block. A charge the list
+/// does not hold yet, `undefined`, is pending.
+export function chargeChip(charge) {
+  if (charge?.paidFinalized) return { state: 'finalized', label: 'Finalized' };
+  if (charge?.paidHash) return { state: 'confirmed', label: 'Paid' };
+  return { state: 'pending', label: 'Pending' };
 }
 
 // The filters of the board and whether each keeps paid charges; "Todas" keeps both.
@@ -93,7 +97,7 @@ function Row({ charge, onOpen }) {
         </Text>
         <Text style={styles.meta}>created at {formatTime(charge.createdAt)}</Text>
       </View>
-      <StatusChip {...chargeChip(paid)} />
+      <StatusChip {...chargeChip(charge)} />
     </Pressable>
   );
 }

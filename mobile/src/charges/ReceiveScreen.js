@@ -14,7 +14,12 @@ import {
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { createCharge, encodeCharge, listCharges } from '@nullius/core/charges';
+import {
+  createCharge,
+  encodeCharge,
+  listCharges,
+  markChargesFinalized,
+} from '@nullius/core/charges';
 import { readHistory } from '@nullius/core/history';
 import { useAdapters } from '../adapters';
 import { chargeChip, ChargesScreen } from './ChargesScreen';
@@ -55,7 +60,7 @@ function failureNotice(id, fields, error) {
   };
 }
 
-export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAccounts }) {
+export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpenAccounts }) {
   const { show, dismiss } = useNotices();
   const { db } = useAdapters();
   // The amount as typed, in ETH.
@@ -93,11 +98,12 @@ export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAcc
     }
   }, [db, network, payee, show, dismiss]);
 
-  // Reads the account's `Payment` logs, which marks its charges paid, then reads the list again:
-  // when the tab opens, when the account or the network changes, and once the history question
-  // is answered. The list is read first too, so the charges show while a long reading runs. It
-  // never throws: a failed reading leaves the charges as kept and says why in a notice that stays
-  // until a reading works.
+  // Reads the account's `Payment` logs, which marks its charges paid, marks finalized the paid
+  // ones the finalized block passed, then reads the list again: when the tab opens, when the
+  // account or the network changes, and once the history question is answered. A charge
+  // finalized here puts up no notice; the list on screen says it. The list is read first too, so
+  // the charges show while a long reading runs. It never throws: a failed reading leaves the
+  // charges as kept and says why in a notice that stays until a reading works.
   const checkCharges = useCallback(async () => {
     if (network && payee) {
       try {
@@ -105,6 +111,7 @@ export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAcc
         await readHistory(db, network, payee, (nextBlock, lastBlock) =>
           setBlocksLeft(lastBlock - nextBlock + 1n),
         );
+        await markChargesFinalized(db, network, payee);
         dismiss('charges-check-failure');
       } catch (error) {
         const fields = {
@@ -125,11 +132,11 @@ export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAcc
     checkCharges();
   }, [checkCharges]);
 
-  // A charge paid while the tab is open puts up a notice; the list is read again so it says paid
-  // too.
+  // A charge paid or finalized while the tab is open puts up a notice; the list is read again so
+  // it says so too.
   useEffect(() => {
     loadCharges();
-  }, [paidCharges, loadCharges]);
+  }, [changedCharges, loadCharges]);
 
   // `createCharge` draws the salt and keeps the charge before it comes back. The keyboard goes
   // down so the card it would cover shows.
@@ -166,8 +173,9 @@ export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAcc
   // charge carries the network's chain id and contract, so none is made before `checkNode` has
   // accepted the network.
   const incomplete = !network || !payee || wei === null || wei === 0n;
-  // The card's charge as the list has it now, so the card says paid as soon as the list does.
-  const paid = charges.find((stored) => stored.orderId === charge?.orderId)?.paidHash;
+  // The card's charge as the list has it now, so the card says paid or finalized as soon as the
+  // list does.
+  const cardStored = charges.find((stored) => stored.orderId === charge?.orderId);
   const account = accounts.find((each) => each.address === payee);
 
   // The tab, and the list over it; the tab stays mounted under it, as it was. A
@@ -219,7 +227,7 @@ export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAcc
           {charge && (
             <View style={styles.card}>
               <View style={styles.chargeChip}>
-                <StatusChip {...chargeChip(paid)} />
+                <StatusChip {...chargeChip(cardStored)} />
               </View>
               <Detail name="Amount" value={`${formatEth(charge.valueWei)} ETH`} large />
               <Detail name="Order id" value={shortAddress(charge.orderId)} />
@@ -273,7 +281,7 @@ export function ReceiveScreen({ network, accounts, payee, paidCharges, onOpenAcc
                       created {formatWhen(stored.createdAt)}
                     </Text>
                   </View>
-                  <StatusChip {...chargeChip(stored.paidHash)} />
+                  <StatusChip {...chargeChip(stored)} />
                 </Pressable>
               ))}
             </View>
