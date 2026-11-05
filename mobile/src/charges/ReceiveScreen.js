@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   BackHandler,
   Keyboard,
   Pressable,
@@ -78,6 +79,8 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
   const [listing, setListing] = useState(false);
   // Whether the card's charge is open as a QR code across the screen.
   const [showingQr, setShowingQr] = useState(false);
+  // Whether `generate` is running: Generate is off until it ends, so a double tap makes one charge.
+  const [creating, setCreating] = useState(false);
 
   // Read again after a charge is kept, and by `checkCharges`. Without both an account and an
   // accepted network there is nothing to list. It never throws: a failed read empties the list,
@@ -143,13 +146,34 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
   async function generate() {
     Keyboard.dismiss();
     dismiss('charge-save-failure');
+    setCreating(true);
     try {
       setCharge(await createCharge(db, network, payee, wei, Date.now()));
     } catch (error) {
       const notice = { title: 'Charge not saved', body: 'Nothing was made for the payer' };
       show(failureNotice('charge-save-failure', notice, error));
+    } finally {
+      setCreating(false);
     }
     await loadCharges();
+  }
+
+  // Generate on the amount of the pending charge the card shows asks first: a second sale of
+  // the same price is a second charge, a repeated tap is not. A charge just made that the list
+  // does not hold yet, `cardStored` undefined, counts as pending.
+  function askGenerate() {
+    if (!charge || cardStored?.paidHash || charge.valueWei !== wei) {
+      generate();
+      return;
+    }
+    Alert.alert(
+      `A pending charge of ${formatEth(wei)} ETH is on screen`,
+      'Generate another one, for another payment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Generate', onPress: generate },
+      ],
+    );
   }
 
   // Puts a charge, new or picked from either list, in the card with its text.
@@ -173,6 +197,7 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
   // charge carries the network's chain id and contract, so none is made before `checkNode` has
   // accepted the network.
   const incomplete = !network || !payee || wei === null || wei === 0n;
+  const generateOff = incomplete || creating;
   // The card's charge as the list has it now, so the card says paid or finalized as soon as the
   // list does.
   const cardStored = charges.find((stored) => stored.orderId === charge?.orderId);
@@ -212,11 +237,11 @@ export function ReceiveScreen({ network, accounts, payee, changedCharges, onOpen
                 <Text style={styles.unit}>ETH</Text>
               </View>
               <Pressable
-                style={[styles.generate, incomplete && styles.generateOff]}
-                onPress={generate}
-                disabled={incomplete}
+                style={[styles.generate, generateOff && styles.generateOff]}
+                onPress={askGenerate}
+                disabled={generateOff}
               >
-                <Text style={[styles.generateText, incomplete && styles.generateTextOff]}>
+                <Text style={[styles.generateText, generateOff && styles.generateTextOff]}>
                   Generate
                 </Text>
               </Pressable>
